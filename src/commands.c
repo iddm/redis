@@ -7143,6 +7143,65 @@ struct redisCommandArg WATCH_Args[] = {
 {0}
 };
 
+void fxhelloCommand(client *c) {
+    // addReplyError(c, "Hey there! Glad to see you!");
+
+    addReplySds(c, sdsnew("+OK Hey there! Glad to see you!\r\n"));
+}
+
+/********** LCOUNT ********************/
+
+/* LCOUNT history */
+#define LCOUNT_History NULL
+
+/* LCOUNT tips */
+#define LCOUNT_tips NULL
+
+/* LCOUNT argument table */
+struct redisCommandArg LCOUNT_Args[] = {
+{"key",ARG_TYPE_KEY,0,NULL,NULL,NULL,CMD_ARG_NONE},
+{"element",ARG_TYPE_STRING,0,NULL,NULL,NULL,CMD_ARG_NONE},
+{0}
+};
+
+// Counts how many times a key exists in a list.
+void lcountCommand(client *c) {
+    robj *o, *ele;
+    ele = c->argv[2];
+    int direction = LIST_TAIL;
+    long rank = 1, count = -1, maxlen = 0; /* Count -1: option not given. */
+
+    /* We return NULL or an empty array if there is no such key (or
+     * if we find no matches, depending on the presence of the COUNT option. */
+    if ((o = lookupKeyRead(c->db,c->argv[1])) == NULL) {
+        if (count != -1)
+            addReply(c,shared.emptyarray);
+        else
+            addReply(c,shared.null[c->resp]);
+        return;
+    }
+    if (checkType(c,o,OBJ_LIST)) return;
+
+    uint64_t lcount = 0;
+    /* Seek the element. */
+    listTypeIterator *li;
+    li = listTypeInitIterator(o,0,LIST_TAIL);
+    listTypeEntry entry;
+    long llen = listTypeLength(o);
+    long index = 0;
+    while (listTypeNext(li,&entry) && index < llen) {
+        if (listTypeEqual(&entry,ele)) {
+            ++lcount;
+            // lcount = entry.entry.node->count;
+            // break;
+        }
+        index++;
+    }
+    listTypeReleaseIterator(li);
+
+    addReplyLongLong(c, lcount);
+}
+
 /* Main command table */
 struct redisCommand redisCommandTable[] = {
 /* bitmap */
@@ -7243,6 +7302,7 @@ struct redisCommand redisCommandTable[] = {
 {"lmpop","Pop elements from a list","O(N+M) where N is the number of provided keys and M is the number of elements returned.","7.0.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_LIST,LMPOP_History,LMPOP_tips,lmpopCommand,-4,CMD_WRITE,ACL_CATEGORY_LIST,{{NULL,CMD_KEY_RW|CMD_KEY_ACCESS|CMD_KEY_DELETE,KSPEC_BS_INDEX,.bs.index={1},KSPEC_FK_KEYNUM,.fk.keynum={0,1,1}}},lmpopGetKeys,.args=LMPOP_Args},
 {"lpop","Remove and get the first elements in a list","O(N) where N is the number of elements returned","1.0.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_LIST,LPOP_History,LPOP_tips,lpopCommand,-2,CMD_WRITE|CMD_FAST,ACL_CATEGORY_LIST,{{NULL,CMD_KEY_RW|CMD_KEY_ACCESS|CMD_KEY_DELETE,KSPEC_BS_INDEX,.bs.index={1},KSPEC_FK_RANGE,.fk.range={0,1,0}}},.args=LPOP_Args},
 {"lpos","Return the index of matching elements on a list","O(N) where N is the number of elements in the list, for the average case. When searching for elements near the head or the tail of the list, or when the MAXLEN option is provided, the command may run in constant time.","6.0.6",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_LIST,LPOS_History,LPOS_tips,lposCommand,-3,CMD_READONLY,ACL_CATEGORY_LIST,{{NULL,CMD_KEY_RO|CMD_KEY_ACCESS,KSPEC_BS_INDEX,.bs.index={1},KSPEC_FK_RANGE,.fk.range={0,1,0}}},.args=LPOS_Args},
+{"lcount","Return the number of times an element appears in a list","O(N) where N is the number of elements in the list, for the average case.",REDIS_VERSION,CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_LIST,LCOUNT_History,LCOUNT_tips,lcountCommand,-1,CMD_READONLY,ACL_CATEGORY_LIST,{{NULL,CMD_KEY_RO|CMD_KEY_ACCESS,KSPEC_BS_INDEX,.bs.index={1},KSPEC_FK_RANGE,.fk.range={0,1,0}}},.args=LCOUNT_Args},
 {"lpush","Prepend one or multiple elements to a list","O(1) for each element added, so O(N) to add N elements when the command is called with multiple arguments.","1.0.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_LIST,LPUSH_History,LPUSH_tips,lpushCommand,-3,CMD_WRITE|CMD_DENYOOM|CMD_FAST,ACL_CATEGORY_LIST,{{NULL,CMD_KEY_RW|CMD_KEY_INSERT,KSPEC_BS_INDEX,.bs.index={1},KSPEC_FK_RANGE,.fk.range={0,1,0}}},.args=LPUSH_Args},
 {"lpushx","Prepend an element to a list, only if the list exists","O(1) for each element added, so O(N) to add N elements when the command is called with multiple arguments.","2.2.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_LIST,LPUSHX_History,LPUSHX_tips,lpushxCommand,-3,CMD_WRITE|CMD_DENYOOM|CMD_FAST,ACL_CATEGORY_LIST,{{NULL,CMD_KEY_RW|CMD_KEY_INSERT,KSPEC_BS_INDEX,.bs.index={1},KSPEC_FK_RANGE,.fk.range={0,1,0}}},.args=LPUSHX_Args},
 {"lrange","Get a range of elements from a list","O(S+N) where S is the distance of start offset from HEAD for small lists, from nearest end (HEAD or TAIL) for large lists; and N is the number of elements in the specified range.","1.0.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_LIST,LRANGE_History,LRANGE_tips,lrangeCommand,4,CMD_READONLY,ACL_CATEGORY_LIST,{{NULL,CMD_KEY_RO|CMD_KEY_ACCESS,KSPEC_BS_INDEX,.bs.index={1},KSPEC_FK_RANGE,.fk.range={0,1,0}}},.args=LRANGE_Args},
@@ -7403,5 +7463,7 @@ struct redisCommand redisCommandTable[] = {
 {"multi","Mark the start of a transaction block","O(1)","1.2.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_TRANSACTIONS,MULTI_History,MULTI_tips,multiCommand,1,CMD_NOSCRIPT|CMD_LOADING|CMD_STALE|CMD_FAST|CMD_ALLOW_BUSY,ACL_CATEGORY_TRANSACTION},
 {"unwatch","Forget about all watched keys","O(1)","2.2.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_TRANSACTIONS,UNWATCH_History,UNWATCH_tips,unwatchCommand,1,CMD_NOSCRIPT|CMD_LOADING|CMD_STALE|CMD_FAST|CMD_ALLOW_BUSY,ACL_CATEGORY_TRANSACTION},
 {"watch","Watch the given keys to determine execution of the MULTI/EXEC block","O(1) for every key.","2.2.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_TRANSACTIONS,WATCH_History,WATCH_tips,watchCommand,-2,CMD_NOSCRIPT|CMD_LOADING|CMD_STALE|CMD_FAST|CMD_ALLOW_BUSY,ACL_CATEGORY_TRANSACTION,{{NULL,CMD_KEY_RO,KSPEC_BS_INDEX,.bs.index={1},KSPEC_FK_RANGE,.fk.range={-1,1,0}}},.args=WATCH_Args},
+// FX added command.
+{"fxhello", "Says hello back.", "O(1)", REDIS_VERSION, CMD_DOC_NONE, NULL, NULL, COMMAND_GROUP_SERVER, NULL, NULL, fxhelloCommand, 0, CMD_NOSCRIPT, ACL_CATEGORY_STRING, {{NULL,CMD_KEY_RO,KSPEC_BS_INDEX,.bs.index={1},KSPEC_FK_RANGE,.fk.range={-1,1,0}}},.args={{0}}},
 {0}
 };

@@ -432,6 +432,13 @@ start_server {
         }
     }
 
+    test {LCOUNT basic usage} {
+        r DEL mylist
+        r LPUSH mylist 1 1 1 2
+        assert {[r LCOUNT mylist 1] == 3}
+        assert {[r LCOUNT mylist 2] == 1}
+    }
+
     test {LPOS basic usage} {
         r DEL mylist
         r RPUSH mylist a b c 1 2 3 c c
